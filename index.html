@@ -1,0 +1,371 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Typst in the Browser — LiveCodes POC</title>
+    <style>
+      :root {
+        --bg: #0f1115;
+        --panel: #161a22;
+        --panel-2: #1b2029;
+        --border: #2a2f3a;
+        --text: #e6e8ec;
+        --muted: #9aa4b2;
+        --accent: #7c5cff;
+        --ok: #3ecf8e;
+        --err: #ff6b6b;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+
+      body {
+        display: flex;
+        flex-direction: column;
+        background: var(--bg);
+        color: var(--text);
+        font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      }
+
+      header {
+        display: flex;
+        align-items: baseline;
+        gap: 12px;
+        padding: 14px 18px;
+        border-bottom: 1px solid var(--border);
+        background: var(--panel);
+      }
+
+      header h1 {
+        margin: 0;
+        font-size: 16px;
+        font-weight: 600;
+      }
+
+      header .sub {
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      header .badge {
+        margin-left: auto;
+        padding: 2px 8px;
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        color: var(--muted);
+        font-size: 12px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      }
+
+      .toolbar {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 18px;
+        border-bottom: 1px solid var(--border);
+        background: var(--panel);
+      }
+
+      button {
+        padding: 7px 14px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: var(--panel-2);
+        color: var(--text);
+        font-size: 13px;
+        font-weight: 500;
+        cursor: pointer;
+      }
+
+      button:hover:not(:disabled) {
+        border-color: var(--accent);
+      }
+
+      button.primary {
+        border-color: transparent;
+        background: var(--accent);
+        color: #fff;
+      }
+
+      button:disabled {
+        opacity: 0.5;
+        cursor: default;
+      }
+
+      .status {
+        margin-left: auto;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .status::before {
+        content: "";
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--muted);
+      }
+
+      .status.busy::before {
+        background: var(--accent);
+        animation: pulse 1s ease-in-out infinite;
+      }
+
+      .status.ok::before {
+        background: var(--ok);
+      }
+
+      .status.error::before {
+        background: var(--err);
+      }
+
+      @keyframes pulse {
+        50% {
+          opacity: 0.25;
+        }
+      }
+
+      main {
+        flex: 1;
+        min-height: 0;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+      }
+
+      .editor {
+        min-height: 0;
+        display: flex;
+        border-right: 1px solid var(--border);
+      }
+
+      #source {
+        flex: 1;
+        width: 100%;
+        min-height: 0;
+        padding: 16px;
+        border: 0;
+        outline: none;
+        resize: none;
+        background: var(--panel);
+        color: var(--text);
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 14px;
+        line-height: 1.6;
+        tab-size: 2;
+      }
+
+      .preview {
+        position: relative;
+        min-height: 0;
+        overflow: auto;
+        padding: 24px;
+        background: var(--bg);
+      }
+
+      #preview svg {
+        display: block;
+        max-width: 100%;
+        height: auto;
+        background: #fff;
+        border-radius: 4px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+      }
+
+      .error {
+        padding: 14px 16px;
+        border: 1px solid rgba(255, 107, 107, 0.5);
+        border-radius: 8px;
+        background: rgba(255, 107, 107, 0.08);
+        color: #ffc9c9;
+        white-space: pre-wrap;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 13px;
+        line-height: 1.5;
+      }
+
+      @media (max-width: 800px) {
+        main {
+          grid-template-columns: 1fr;
+          grid-template-rows: 1fr 1fr;
+        }
+
+        .editor {
+          border-right: 0;
+          border-bottom: 1px solid var(--border);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Typst in the Browser</h1>
+      <span class="sub">proof of concept — compiled to WebAssembly, no server</span>
+      <span class="badge">typst.ts@0.7.0</span>
+    </header>
+
+    <div class="toolbar">
+      <button id="run" class="primary">Run</button>
+      <button id="pdf">Download PDF</button>
+      <span id="status" class="status">Loading compiler…</span>
+    </div>
+
+    <main>
+      <section class="editor">
+        <textarea id="source" spellcheck="false"></textarea>
+      </section>
+      <section class="preview">
+        <div id="preview"></div>
+      </section>
+    </main>
+
+    <script type="module">
+      // POC: run the real Typst compiler in the browser via WASM (typst.ts), no backend.
+      // The pre-bundled build is self-contained (no bare imports), so it loads as-is from a CDN.
+      import { $typst } from "https://cdn.jsdelivr.net/npm/@myriaddreamin/typst.ts@0.7.0/dist/esm/contrib/all-in-one-lite.bundle.js";
+
+      const VERSION = "0.7.0";
+      const CDN = "https://cdn.jsdelivr.net/npm";
+
+      const DEFAULT_SOURCE = `#set page(width: auto, height: auto, margin: 1cm)
+#set text(size: 12pt)
+
+= Typst in the browser
+
+Rendered by the *Typst* compiler compiled to WebAssembly, entirely on the client.
+
+$ sum_(k=1)^n k = (n (n + 1)) / 2 $
+
+- No backend
+- No build step
+- Just a single HTML file
+
+#table(
+  columns: 2,
+  [*Feature*], [*Status*],
+  [Compiler], [WASM],
+)
+`;
+
+      const source = document.getElementById("source");
+      const preview = document.getElementById("preview");
+      const statusEl = document.getElementById("status");
+      const runButton = document.getElementById("run");
+      const pdfButton = document.getElementById("pdf");
+
+      source.value = DEFAULT_SOURCE;
+
+      $typst.setCompilerInitOptions({
+        getModule: () =>
+          `${CDN}/@myriaddreamin/typst-ts-web-compiler@${VERSION}/pkg/typst_ts_web_compiler_bg.wasm`,
+      });
+      $typst.setRendererInitOptions({
+        getModule: () =>
+          `${CDN}/@myriaddreamin/typst-ts-renderer@${VERSION}/pkg/typst_ts_renderer_bg.wasm`,
+      });
+
+      let busy = false;
+      let latest = 0;
+      let firstRun = true;
+
+      const setStatus = (text, state = "") => {
+        statusEl.textContent = text;
+        statusEl.className = `status ${state}`.trim();
+      };
+
+      const setBusy = (value) => {
+        busy = value;
+        runButton.disabled = value;
+        pdfButton.disabled = value;
+      };
+
+      const formatError = (err) => {
+        const raw = err && err.message ? err.message : String(err);
+        const messages = [...raw.matchAll(/message:\s*"((?:[^"\\]|\\.)*)"/g)].map((m) => m[1]);
+        return messages.length ? messages.join("\n") : raw;
+      };
+
+      const showError = (err) => {
+        preview.innerHTML = "";
+        const box = document.createElement("div");
+        box.className = "error";
+        box.textContent = formatError(err);
+        preview.appendChild(box);
+      };
+
+      const render = async () => {
+        const id = ++latest;
+        setBusy(true);
+        setStatus(firstRun ? "Downloading compiler (~28 MB, first run only)…" : "Rendering…", "busy");
+        try {
+          const svg = await $typst.svg({ mainContent: source.value });
+          if (id !== latest) return;
+          preview.innerHTML = svg;
+          firstRun = false;
+          setStatus("Rendered", "ok");
+        } catch (err) {
+          if (id !== latest) return;
+          firstRun = false;
+          showError(err);
+          setStatus("Compilation failed", "error");
+        } finally {
+          if (id === latest) setBusy(false);
+        }
+      };
+
+      const downloadPdf = async () => {
+        setBusy(true);
+        setStatus("Exporting PDF…", "busy");
+        try {
+          const pdf = await $typst.pdf({ mainContent: source.value });
+          const url = URL.createObjectURL(new Blob([pdf], { type: "application/pdf" }));
+          const link = document.createElement("a");
+          link.href = url;
+          link.download = "document.pdf";
+          link.click();
+          URL.revokeObjectURL(url);
+          setStatus("PDF exported", "ok");
+        } catch (err) {
+          showError(err);
+          setStatus("Export failed", "error");
+        } finally {
+          setBusy(false);
+        }
+      };
+
+      let debounce;
+      source.addEventListener("input", () => {
+        clearTimeout(debounce);
+        debounce = setTimeout(render, 500);
+      });
+
+      source.addEventListener("keydown", (event) => {
+        if (event.key === "Tab") {
+          event.preventDefault();
+          const { selectionStart: start, selectionEnd: end, value } = source;
+          source.value = `${value.slice(0, start)}  ${value.slice(end)}`;
+          source.selectionStart = source.selectionEnd = start + 2;
+        }
+        if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+          event.preventDefault();
+          render();
+        }
+      });
+
+      runButton.addEventListener("click", render);
+      pdfButton.addEventListener("click", downloadPdf);
+
+      render();
+    </script>
+  </body>
+</html>
